@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  web:
+    container_name: 'local-weather-app'
+    image: 'youssofkhawaja/localweatherapp:latest'
+    ports:
+      - "24117:80"
+    networks:
+      - local-weather-app
+
+networks:
+  local-weather-app:
+    driver: bridge

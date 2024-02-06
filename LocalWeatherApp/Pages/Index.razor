@@ -1,0 +1,129 @@
+﻿@page "/"
+@using LocalWeatherApp.Services
+@using Newtonsoft.Json
+@using LocalWeatherApp.Models
+@inject IConfiguration _Configuration
+@inject DhtService DhtService
+
+
+<PageTitle>Local Weather</PageTitle>
+@if (notempty)
+{
+    <MudContainer MaxWidth="MaxWidth.Large">
+        <MudItem>
+            <ApexChart TItem="DhtData" Title="Tempreture and Humadity Value" XAxisType="XAxisType.Datetime"
+                Options="options" Debug>
+                <ApexPointSeries TItem="DhtData" Items="dhtData" Name="Temperature" SeriesType="SeriesType.Line"
+                    XValue="@(e => e.Timestamp.ToUniversalTime())" YValue="@(e => e.Temperature)" OrderBy="e => e.X" />
+                <ApexPointSeries TItem="DhtData" Items="dhtData" Name="Humidity" SeriesType="SeriesType.Line"
+                    XValue="@(e => e.Timestamp.ToUniversalTime())" YValue="@(e => e.Humidity)" OrderBy="e => e.X" />
+            </ApexChart>
+        </MudItem>
+
+        <MudItem>
+            <MudText Typo="Typo.h5">Tempreture and Humadity Table</MudText>
+        </MudItem>
+
+        <MudItem>
+            <MudTable Items="@dhtData" Hover="true" SortLabel="Sort By">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<DhtData, object>(x => x.Timestamp)">Date</MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<DhtData, object>(x => x.Temperature)">Temperature
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<DhtData, object>(x => x.Humidity)">Humidity</MudTableSortLabel>
+                    </MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="DateTime">@context.Timestamp.ToUniversalTime().ToString("MM/dd/yyyy HH:mm tt")</MudTd>
+                    <MudTd DataLabel="Temperature">@context.Temperature°C</MudTd>
+                    <MudTd DataLabel="Humidity">@context.Humidity%</MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[]{50, 100}" />
+                </PagerContent>
+            </MudTable>
+        </MudItem>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Large">
+        <MudOverlay Visible="!notempty" DarkBackground="true" AutoClose="false">
+            <MudProgressCircular Style="top: 50%;left: 50%;transform: translate(-50%, -50%);" Color="MudBlazor.Color.Primary" Indeterminate="true" />
+        </MudOverlay>
+    </MudContainer>
+}
+
+
+@code {
+    private readonly ApexChartOptions<DhtData> options = new ApexCharts.ApexChartOptions<DhtData>();
+    private List<DhtData> dhtData = new List<DhtData>();
+    private bool notempty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        notempty = false;
+        dhtData = await DhtService.GetDHTDataAsync();
+        if (dhtData != null && dhtData.Count == 0)
+        {
+            return;
+        }
+
+        options.Debug = true;
+        options.ForecastDataPoints = new ForecastDataPoints
+            {
+                Count = 3,
+                DashArray = 4,
+                FillOpacity = 0.5,
+            };
+        options.Tooltip = new ApexCharts.Tooltip { X = new TooltipX { Format = @"MMMM \ yyyy" } };
+        options.Tooltip = new ApexCharts.Tooltip
+            {
+                Y = new TooltipY
+                {
+                    Title = new TooltipYTitle { Formatter = @"function(name) { return name + ':' }" },
+                    Formatter = @"function(value, { series, seriesIndex, dataPointIndex, w }) { return value }"
+                },
+            };
+        options.Xaxis = new XAxis
+            {
+                Title = new AxisTitle
+                {
+                    OffsetY = 5,
+                    Text = "Month",
+                    Style = new AxisTitleStyle { FontSize = "14px", Color = "lightgrey" }
+                },
+                AxisBorder = new AxisBorder
+                {
+                    Height = 2
+                }
+            };
+        options.Yaxis = new List<YAxis>();
+        options.Yaxis.Add(new YAxis
+            {
+                DecimalsInFloat = 0,
+                Labels = new YAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "10px" } },
+                Title = new AxisTitle { Text = "Value", Style = new AxisTitleStyle { FontSize = "14px", Color = "lightgrey" } }
+            });
+
+        options.Annotations = new Annotations { Yaxis = new List<AnnotationsYAxis>() };
+        options.Annotations.Yaxis.Add(new AnnotationsYAxis
+            {
+                Y = 50000,
+                BorderWidth = 2,
+                StrokeDashArray = 5,
+                BorderColor = "red",
+                Label = new Label { Text = "Monthly Target" }
+            });
+
+        notempty = true;
+
+        await base.OnInitializedAsync();  
+    }
+
+}

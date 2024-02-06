@@ -1,0 +1,15 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Fixed="false" Elevation="0" style="background-color: transparent;">
+        <MudIconButton Href="https://github.com/YoussofKhawaja/LocalWeatherApp" Icon="@Icons.Custom.Brands.GitHub"
+            title="Github"></MudIconButton>
+    </MudAppBar>
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>

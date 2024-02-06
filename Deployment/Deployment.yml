@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: localweatherapp-ns
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localweatherapp-app
+  namespace: localweatherapp-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localweatherapp-app
+  template:
+    metadata:
+      labels:
+        app: localweatherapp-app
+    spec:
+      containers:
+        - name: localweatherapp-app
+          image: 995904037628.dkr.ecr.eu-west-3.amazonaws.com/weatherapp:latest
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          ports:
+            - containerPort: 80
