@@ -1,0 +1,3 @@
+[submodule "IoT-Climate-Tracker"]
+	path = IoT-Climate-Tracker
+	url = https://github.com/YoussofKhawaja/IoT-Climate-Tracker

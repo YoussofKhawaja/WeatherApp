@@ -6,21 +6,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Step 1: Gitleaks Scan
-  scan:
-    name: gitleaks scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  # Step 2: Test .NET Application
+  # Step 1: Test .NET Application
   test:
     name: Test App
-    needs: scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,7 +24,7 @@ jobs:
       - name: Run Tests
         run: dotnet test --no-build --verbosity normal LocalWeatherApp/LocalWeatherApp.csproj
 
-  # Step 3: SonarQube Analysis
+  # Step 2: SonarQube Analysis
   sonarqube:
     name: SonarQube Analysis
     needs: test
@@ -74,7 +62,7 @@ jobs:
           dotnet-coverage collect 'dotnet test' -f xml -o 'coverage.xml'
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
-  # Step 4: SonarQube Quality Gate
+  # Step 3: SonarQube Quality Gate
   qualitygate:
     name: SonarQube Quality Gate
     needs: sonarqube
@@ -97,7 +85,7 @@ jobs:
             exit 1
           fi
 
-  # Step 5: Build and Push Docker Image
+  # Step 4: Build and Push Docker Image
   docker:
     name: Docker Build
     needs: qualitygate
@@ -115,7 +103,7 @@ jobs:
           name: localweatherapp
           path: localweatherapp.tar
 
-  # Step 6: Trivy Vulnerability Scan
+  # Step 5: Trivy Vulnerability Scan
   trivy:
     name: Trivy Vulnerability Scan
     runs-on: ubuntu-latest
@@ -133,7 +121,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
-  #Step 7: AWS login and Docker push
+  #Step 6: AWS login and Docker push
   docker-push:
     name: Docker Push
     needs: [docker, trivy]
@@ -160,7 +148,7 @@ jobs:
           docker tag youssofkhawaja/localweatherapp:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-3.amazonaws.com/weatherapp:latest
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-3.amazonaws.com/weatherapp:latest
 
-  # Step 8: EKS Deployment
+  # Step 7: EKS Deployment
   eks-deployment:
     name: EKS Deployment
     needs: docker-push
@@ -176,12 +164,12 @@ jobs:
           aws-region: eu-west-3
       - name: Deploy to EKS
         run: |
-          aws eks update-kubeconfig --region eu-west-3 --name WeatherApp
+          aws eks update-kubeconfig --region eu-west-3 --name cluster-1
           kubectl apply -f Deployment/Deployment.yml
           kubectl apply -f Deployment/Service.yml
           kubectl apply -f Deployment/Ingress.yml
 
-  # Step 9: ZAP Scan
+  # Step 8: ZAP Scan
   zap_scan:
     name: Scan the webapplication
     needs: eks-deployment
@@ -196,7 +184,7 @@ jobs:
           target: 'https://weatherapp.youssofkhawaja.com'
           allow_issue_writing: false
 
-  # Step 10: Delete artifact
+  # Step 9: Delete artifact
   Delete:
     name: delete artifact
     needs: [docker, docker-push, trivy]

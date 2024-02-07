@@ -1,8 +1,8 @@
 name: Local Weather App Deployment
 
 on:
-  # push:
-  #   branches: ["Development"]
+  push:
+    branches: ["Development"]
   workflow_dispatch:
 
 jobs:
