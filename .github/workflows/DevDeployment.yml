@@ -2,13 +2,25 @@ name: Local Weather App Deployment
 
 on:
   push:
-    branches: ["main"]
+    branches: ["Development"]
   workflow_dispatch:
 
 jobs:
-  # Step 1: Test .NET Application
+  # Step 1: Gitleaks Scan
+  scan:
+    name: gitleaks scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Step 2: Test .NET Application
   test:
     name: Test App
+    needs: scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,7 +36,7 @@ jobs:
       - name: Run Tests
         run: dotnet test --no-build --verbosity normal LocalWeatherApp/LocalWeatherApp.csproj
 
-  # Step 2: SonarQube Analysis
+  # Step 3: SonarQube Analysis
   sonarqube:
     name: SonarQube Analysis
     needs: test
@@ -62,7 +74,7 @@ jobs:
           dotnet-coverage collect 'dotnet test' -f xml -o 'coverage.xml'
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
-  # Step 3: SonarQube Quality Gate
+  # Step 4: SonarQube Quality Gate
   qualitygate:
     name: SonarQube Quality Gate
     needs: sonarqube
@@ -85,7 +97,7 @@ jobs:
             exit 1
           fi
 
-  # Step 4: Build and Push Docker Image
+  # Step 5: Build and Push Docker Image
   docker:
     name: Docker Build
     needs: qualitygate
@@ -103,7 +115,7 @@ jobs:
           name: localweatherapp
           path: localweatherapp.tar
 
-  # Step 5: Trivy Vulnerability Scan
+  # Step 6: Trivy Vulnerability Scan
   trivy:
     name: Trivy Vulnerability Scan
     runs-on: ubuntu-latest
@@ -121,10 +133,10 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
-  #Step 6: AWS login and Docker push
+  # Step 7: Push Docker Image to Remote Server
   docker-push:
-    name: Docker Push
-    needs: [docker, trivy]
+    name: Docker Push to Server and Run
+    needs: trivy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -134,45 +146,34 @@ jobs:
         with:
           name: localweatherapp
           path: .
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-3
       - name: Load Docker Image
         run: docker load -i localweatherapp.tar
-      - name: Push Docker Image
-        run: |
-          aws ecr get-login-password --region eu-west-3 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-3.amazonaws.com
-          docker tag youssofkhawaja/localweatherapp:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-3.amazonaws.com/weatherapp:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-3.amazonaws.com/weatherapp:latest
-
-  # Step 7: EKS Deployment
-  eks-deployment:
-    name: EKS Deployment
-    needs: docker-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Copy Tar via SSH
+        uses: appleboy/scp-action@v0.1.3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-3
-      - name: Deploy to EKS
-        run: |
-          aws eks update-kubeconfig --region eu-west-3 --name cluster-1
-          kubectl apply -f Deployment/Deployment.yml
-          kubectl apply -f Deployment/Service.yml
-          kubectl apply -f Deployment/Ingress.yml
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.KEY }}
+          port: 22
+          source: "localweatherapp.tar"
+          target: "/home/ubuntu/images"
+      - name: Execute SSH Commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            docker load -i /home/ubuntu/images/localweatherapp.tar
+            rm /home/ubuntu/images/localweatherapp.tar
+            docker kill localweatherapp
+            docker system prune -f
+            docker run --name localweatherapp -p 24117:80 --restart always -d youssofkhawaja/localweatherapp:latest
 
-  # Step 8: ZAP Scan
+  # Step 7: ZAP Scan
   zap_scan:
     name: Scan the webapplication
-    needs: eks-deployment
+    needs: docker-push
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -181,10 +182,10 @@ jobs:
         uses: zaproxy/action-full-scan@master
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          target: 'https://weatherapp.youssofkhawaja.com'
+          target: 'http://${{ secrets.REMOTE_HOST }}:24117'
           allow_issue_writing: false
 
-  # Step 9: Delete artifact
+  # Step 8: Delete
   Delete:
     name: delete artifact
     needs: [docker, docker-push, trivy]
